@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { chunkText } from '../src/ingestion.js';
 import {
   embed,
@@ -10,6 +10,8 @@ import {
   size,
   listSources,
 } from '../src/retrieval.js';
+import { generateAnswer } from '../src/llm.js';
+import config from '../src/config.js';
 
 describe('chunkText', () => {
   it('returns an empty array for empty input', () => {
@@ -176,5 +178,68 @@ describe('store', () => {
     addChunks([{ id: '1', source: 'a.txt', text: 'x', vector: embed('x') }]);
     clear();
     expect(size()).toBe(0);
+  });
+});
+
+describe('generateAnswer', () => {
+  const originalProvider = config.llmProvider;
+  const originalKey = config.geminiApiKey;
+
+  afterEach(() => {
+    config.llmProvider = originalProvider;
+    config.geminiApiKey = originalKey;
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to the template when no provider is configured', async () => {
+    const answer = await generateAnswer('how many days?', [{ text: 'thirty days', score: 0.9 }]);
+    expect(answer).toContain('thirty days');
+  });
+
+  it('returns the no-info message when nothing was retrieved', async () => {
+    const answer = await generateAnswer('anything', []);
+    expect(answer).toMatch(/don't have enough information/);
+  });
+
+  it('calls Gemini when configured and returns its text', async () => {
+    config.llmProvider = 'gemini';
+    config.geminiApiKey = 'test-key';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: 'a gemini answer' }] } }] }),
+      }),
+    );
+
+    const answer = await generateAnswer('a question', [{ text: 'context', score: 0.5 }]);
+    expect(answer).toBe('a gemini answer');
+  });
+
+  it('falls back to the template when the Gemini call fails', async () => {
+    config.llmProvider = 'gemini';
+    config.geminiApiKey = 'test-key';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'server error' }),
+    );
+
+    const answer = await generateAnswer('a question', [{ text: 'fallback text', score: 0.5 }]);
+    expect(answer).toContain('fallback text');
+  });
+
+  it('falls back to the template when Gemini returns no text', async () => {
+    config.llmProvider = 'gemini';
+    config.geminiApiKey = 'test-key';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ candidates: [] }) }),
+    );
+
+    const answer = await generateAnswer('a question', [{ text: 'fallback text', score: 0.5 }]);
+    expect(answer).toContain('fallback text');
   });
 });
