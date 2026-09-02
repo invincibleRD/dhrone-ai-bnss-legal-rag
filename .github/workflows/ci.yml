@@ -81,11 +81,11 @@ jobs:
         working-directory: frontend
 
   retrieval:
-    # the golden set needs a live index, which only the self-hosted box has.
-    # fork PRs never reach it, same guard as build.
+    # the golden set runs against the in-process retriever, so a hosted runner
+    # is enough. fork PRs are still gated, same guard as build.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     needs: [lint, test]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-node@v4.1.0
@@ -97,30 +97,19 @@ jobs:
         working-directory: backend
       - name: golden set regression gate
         working-directory: backend
-        env:
-          QDRANT_URL: http://localhost:6333
-          EMBEDDING_URL: http://localhost:8081
-          RERANKER_URL: http://localhost:8082
-          RERANK_ENABLED: 'true'
-          # the bm25 stats live beside the deployed corpus, not in the checkout.
-          # without them the sparse leg is skipped and the test self-skips.
-          DATA_DIR: /home/ubuntu/hrn+/new/data
         run: npx vitest run tests/retrieval.eval.test.js
 
   build:
-    # fork PRs never reach the self-hosted runner
+    # fork PRs never push an image
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     needs: [lint, test, secrets]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4.2.2
 
-      # no type=gha cache here: the runner is a long lived box that keeps its own
-      # layers, and the actions cache service returns html error pages to
-      # self-hosted runners often enough to fail the build on its own
       - uses: docker/setup-buildx-action@v3.7.1
 
       - uses: docker/build-push-action@v6.10.0
@@ -155,71 +144,6 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:${{ github.ref_name }}
-
-  deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
-    runs-on: self-hosted
-    environment: production
-    permissions:
-      contents: read
-      packages: read
-    env:
-      COMPOSE_PROJECT_NAME: nyaya
-      # the runner's own workspace has no .env (gitignored, rightly) and no data
-      # volumes, so compose is run from the real deployment checkout instead
-      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/home/ubuntu/hrn+/new' }}
-      COMPOSE_FILES: -f docker-compose.yml -f docker-compose.gpu.yml -f .github/deploy/compose.deploy.yml
-    steps:
-      - uses: docker/login-action@v3.3.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: move the deployment to this commit
-        run: |
-          test -f "$DEPLOY_DIR/.env" || { echo "no .env in $DEPLOY_DIR"; exit 1; }
-          cd "$DEPLOY_DIR"
-          git fetch --quiet origin "$GITHUB_SHA"
-          git checkout --quiet --force "$GITHUB_SHA"
-          git log --oneline -1
-
-      - name: roll out
-        env:
-          BACKEND_IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
-        run: |
-          cd "$DEPLOY_DIR"
-          docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q api)" \
-            > ~/nyaya-previous-image 2>/dev/null || true
-          docker compose $COMPOSE_FILES pull api worker
-          docker compose $COMPOSE_FILES up -d --no-deps api worker
-
-      - name: wait for health
-        env:
-          BACKEND_IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
-        run: |
-          cd "$DEPLOY_DIR"
-          for _ in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:8000/api/v1/health >/dev/null && exit 0
-            sleep 5
-          done
-          docker compose $COMPOSE_FILES logs --tail=50 api
-          exit 1
-
-      - name: roll back to the last good image
-        if: failure()
-        env:
-          BACKEND_IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
-        run: |
-          cd "$DEPLOY_DIR"
-          prev=$(cat ~/nyaya-previous-image 2>/dev/null || true)
-          [ -n "$prev" ] || { echo "no previous image recorded, leaving as is"; exit 0; }
-          echo "rolling back to $prev"
-          BACKEND_IMAGE="$prev" docker compose $COMPOSE_FILES up -d --no-deps api worker
-
-      - name: record good image
-        run: echo "${{ env.IMAGE }}:${{ github.sha }}" > ~/nyaya-current-image
 
   # The vercel production alias follows whatever branch the dashboard calls
   # production, which is not visible from the repo. Promoting explicitly here
