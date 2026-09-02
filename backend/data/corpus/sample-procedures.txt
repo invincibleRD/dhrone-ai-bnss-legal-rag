@@ -1,0 +1,36 @@
+SAMPLE PROCEDURAL CLAUSES (toy document, for demo/testing only)
+
+Clause 1. Filing of a Complaint. Any aggrieved person may file a written
+complaint before the designated authority within thirty days of the event
+giving rise to the complaint, unless a longer period is expressly allowed.
+
+Clause 2. Acknowledgement. Upon receipt of a complaint, the authority shall
+issue a written acknowledgement to the complainant within seven working days.
+
+Clause 3. Preliminary Review. The authority shall conduct a preliminary
+review to determine whether the complaint discloses a matter requiring
+further inquiry, and shall record reasons for its decision.
+
+Clause 4. Notice to Respondent. Where further inquiry is warranted, notice
+shall be issued to the respondent, who shall be given not less than fifteen
+days to submit a written response.
+
+Clause 5. Hearing. Both parties shall be given a reasonable opportunity of
+being heard before any adverse order is passed against them.
+
+Clause 6. Recording of Evidence. The authority may receive documents and
+statements as evidence and shall maintain a record of proceedings.
+
+Clause 7. Final Order. The authority shall pass a final order in writing,
+stating the reasons for its decision, within ninety days of the first
+hearing, unless an extension is granted for recorded reasons.
+
+Clause 8. Appeal. Any party aggrieved by the final order may prefer an
+appeal to the appellate authority within sixty days of receiving the order.
+
+Clause 9. Limitation. No proceeding under these clauses shall be initiated
+after the expiry of three years from the date of the alleged act, except
+where the delay is condoned for sufficient cause shown.
+
+Clause 10. Confidentiality. The identity of the complainant shall be kept
+confidential to the extent possible, unless disclosure is required by law.
